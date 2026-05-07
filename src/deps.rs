@@ -31,6 +31,26 @@ pub fn parse_local_deps(cargo_toml_path: &Path) -> HashMap<String, PathBuf> {
     deps
 }
 
+/// Parse non-path (external/crates.io) dependencies from a Cargo.toml
+pub fn parse_external_deps(cargo_toml_path: &Path) -> BTreeMap<String, toml::Value> {
+    let content = fs::read_to_string(cargo_toml_path).expect("failed to read Cargo.toml");
+    let doc: toml::Value = content.parse().expect("failed to parse Cargo.toml");
+
+    let mut deps = BTreeMap::new();
+    if let Some(dep_table) = doc.get("dependencies").and_then(|d| d.as_table()) {
+        for (name, value) in dep_table {
+            let has_path = value
+                .as_table()
+                .map(|t| t.contains_key("path"))
+                .unwrap_or(false);
+            if !has_path {
+                deps.insert(name.clone(), value.clone());
+            }
+        }
+    }
+    deps
+}
+
 /// Recursively resolve all transitive local dependencies using BFS
 pub fn resolve_all_deps(direct_deps: &HashMap<String, PathBuf>) -> HashMap<String, DepInfo> {
     let mut all: HashMap<String, DepInfo> = HashMap::new();

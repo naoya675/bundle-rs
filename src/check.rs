@@ -1,7 +1,9 @@
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use crate::deps;
 
 pub fn run_rustfmt(source: &str) -> String {
     let mut child = Command::new("rustfmt")
@@ -35,7 +37,7 @@ pub fn run_rustfmt(source: &str) -> String {
     String::from_utf8(output.stdout).unwrap_or_else(|_| source.to_string())
 }
 
-pub fn run_check(source: &str, target_dir: &Path) {
+pub fn run_check(source: &str, target_dir: &Path, local_dep_cargo_tomls: &[PathBuf]) {
     // Create a temporary cargo project to check the bundled source
     let tmp_dir = std::env::temp_dir().join("bundle_check");
     let _ = fs::remove_dir_all(&tmp_dir);
@@ -46,15 +48,41 @@ pub fn run_check(source: &str, target_dir: &Path) {
     let cargo_content = fs::read_to_string(&cargo_toml_path).expect("failed to read Cargo.toml");
     let mut doc: toml::Value = cargo_content.parse().expect("failed to parse Cargo.toml");
 
-    if let Some(deps) = doc.get_mut("dependencies").and_then(|d| d.as_table_mut()) {
+    if let Some(deps_table) = doc.get_mut("dependencies").and_then(|d| d.as_table_mut()) {
         // Remove all local path dependencies (they're inlined)
-        let to_remove: Vec<String> = deps
+        let to_remove: Vec<String> = deps_table
             .iter()
             .filter(|(_, v)| v.get("path").is_some())
             .map(|(k, _)| k.clone())
             .collect();
         for key in to_remove {
-            deps.remove(&key);
+            deps_table.remove(&key);
+        }
+
+        // Merge external dependencies from bundled local crates
+        // verify-side specs take precedence; first-seen wins for inter-lib conflicts
+        let mut merged_from_libs: std::collections::BTreeMap<String, toml::Value> =
+            std::collections::BTreeMap::new();
+        for cargo_toml in local_dep_cargo_tomls {
+            let lib_externals = deps::parse_external_deps(cargo_toml);
+            for (name, value) in lib_externals {
+                if let Some(existing) = merged_from_libs.get(&name) {
+                    if existing != &value {
+                        eprintln!(
+                            "warning: external dep '{}' has conflicting specs; using {}",
+                            name,
+                            toml::to_string(existing).unwrap_or_default().trim()
+                        );
+                    }
+                } else {
+                    merged_from_libs.insert(name, value);
+                }
+            }
+        }
+        for (name, value) in merged_from_libs {
+            if !deps_table.contains_key(&name) {
+                deps_table.insert(name, value);
+            }
         }
     }
 

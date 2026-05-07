@@ -153,7 +153,7 @@ query = { path = "../../../macro/query" }  # local — bundled
 union-find = { path = "../../../data-structure/union-find" }  # local — bundled
 ```
 
-External crates (without `path`) are not bundled and remain as dependencies.
+External crates (without `path`) are not bundled and remain as dependencies. During `--check`, external crates required by bundled local dependencies (e.g. `rand` used inside a library crate) are also propagated into the temporary `Cargo.toml`.
 
 ## Known limitations
 

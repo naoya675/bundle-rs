@@ -146,7 +146,11 @@ fn main() {
 
     // Check compilation if requested
     if args.check {
-        check::run_check(&output, target_dir);
+        let dep_cargo_tomls: Vec<PathBuf> = sorted
+            .iter()
+            .map(|name| filtered_deps[name].path.join("Cargo.toml"))
+            .collect();
+        check::run_check(&output, target_dir, &dep_cargo_tomls);
     }
 
     print!("{}", output);

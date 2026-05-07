@@ -100,6 +100,9 @@ pub fn expand_module_source(
         }
     }
 
+    // Remove leading blank lines from expanded output
+    let trimmed = output.trim_start_matches('\n');
+    output = trimmed.to_string();
     output
 }
 
